@@ -65,7 +65,7 @@ Workflows themselves always start so a required result cannot remain missing.
 
 | Required check | Local command | Coverage |
 | --- | --- | --- |
-| Core - Build and Test | `./x core`, `./x ui gallery editor` | All features, headless use, individual formatting features, and real terminal interaction |
+| Core - Build and Test | `./x core`, `./x ui gallery editor inline` | All features, headless use, individual formatting features, and real terminal interaction |
 | Dioxus - Build and Test | `./x dioxus`, `./x ui counter` | Component adapter with and without its default features, plus its terminal example |
 | Keymap - Build and Test | `./x keymap` | Command bindings and key sequences |
 | SSH - Build and Test | `./x ssh` | Authentication, remote input, connection lifecycle, and cleanup |

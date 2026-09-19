@@ -55,8 +55,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _registry = wove_dioxus::Registry::default();
     #[cfg(feature = "terminal")]
     let _remote = std::mem::size_of::<wove_ssh::Server>();
-    #[cfg(feature = "terminal")]
-    wove::terminal::Renderer::default().draw(&mut Vec::new(), frame)?;
+    // Rendering to bytes needs no terminal backend, so it runs in both builds.
+    wove::Renderer::default().draw(&mut Vec::new(), frame)?;
     Ok(())
 }
 ''', encoding="utf-8")

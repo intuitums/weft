@@ -3,12 +3,17 @@ use crate::View;
 use futures_lite::{future, StreamExt};
 use wove::{
     terminal::{self, EventStream, Terminal},
-    Event, Key,
+    Event,
 };
 
-/// Run until Escape, Ctrl+C, or input closure. Component tasks are polled while
-/// waiting for input. The caller chooses the executor; terminal modes use RAII.
-pub async fn run(view: &mut View) -> Result<(), Box<dyn std::error::Error>> {
+/// Run until `quit` accepts an event or input closes. Which keys quit is the
+/// application's decision; an accepted event is not dispatched. Component tasks
+/// are polled while waiting for input. The caller chooses the executor;
+/// terminal modes use RAII.
+pub async fn run(
+    view: &mut View,
+    mut quit: impl FnMut(&Event) -> bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new()?;
     let mut input = EventStream::new();
     loop {
@@ -28,11 +33,7 @@ pub async fn run(view: &mut View) -> Result<(), Box<dyn std::error::Error>> {
         let Some(event) = terminal::convert(event?) else {
             continue;
         };
-        if matches!(
-            event,
-            Event::Key(Key::Escape, _)
-                | Event::Key(Key::Char('c'), wove::Modifiers { ctrl: true, .. })
-        ) {
+        if quit(&event) {
             break;
         }
         view.send(event)?;

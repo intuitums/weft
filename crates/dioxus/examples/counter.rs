@@ -18,6 +18,7 @@ fn app() -> Element {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut view = View::new(VirtualDom::new(app))?;
     view.focus_next(false)?;
-    futures_lite::future::block_on(wove_dioxus::run(&mut view))?;
+    let quit = |event: &Event| *event == Key::Escape.into();
+    futures_lite::future::block_on(wove_dioxus::run(&mut view, quit))?;
     Ok(())
 }

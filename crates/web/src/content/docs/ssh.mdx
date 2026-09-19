@@ -39,21 +39,27 @@ disconnects active clients. An unwinding application panic restores remote termi
 modes and closes its channel with a failure status. Process aborts cannot run
 cleanup. App callbacks must return promptly.
 
-The decoder preserves UTF-8 and escape sequences across packet boundaries and
-supports common xterm keys, modifiers, SGR mouse reports, and bracketed paste.
-A lone Escape waits 40 milliseconds for a following sequence. Unsupported
+The decoder is core's `wove::input::Decoder`. It preserves UTF-8 and escape
+sequences across packet boundaries and supports xterm and kitty key reports,
+modifiers, SGR mouse reports with buttons, focus changes, and bracketed paste.
+The session enables the same modes as a local terminal, through `wove::Options`.
+A lone Escape waits 40 milliseconds for a following sequence, and so does Alt
+with `[` or `O`, which begin one. Unsupported
 terminal reports are ignored. Paste is delivered as text, so a control character
 inside a paste does not become a command.
 
 Frames update after input or resize. This initial transport does not yet provide
 an asynchronous application wakeup mechanism for background tasks or animation.
-Extended keyboard protocols and terminal capability negotiation are not implemented.
+Colors are mapped to what the peer's terminal type suggests it can show. The
+session does not ask for kitty key reports.
 
 ## Limits
 
 The default connection limit is 32 and can be changed through `connections`.
 Terminal dimensions must be positive, at most 512 columns and 256 rows, and no
-more than 65,536 cells. Input packets and pasted text are limited to 64 KiB.
+more than 65,536 cells. Input packets are limited to 64 KiB. A longer paste
+arrives as several paste events in order, and malformed input is dropped rather
+than ending the session.
 The input queue holds 16 messages; overflow closes the connection. A stalled
 output write times out after five seconds. Inactive connections expire after
 five minutes. Applications remain responsible for their own content and work limits.

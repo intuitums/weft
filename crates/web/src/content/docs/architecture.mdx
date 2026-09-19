@@ -16,25 +16,99 @@ its state and focus. Detached and hidden nodes do not paint or receive focus.
 
 Taffy computes flex and grid layout in cells. Elements supply intrinsic
 measurement. The paint pass translates coordinates, clips children inside parent
-borders, and applies viewport offsets. All descendants are currently visited;
-scrolling does not imply virtualization. Paint order follows child order, and
-pointer hit testing uses that same order in reverse.
+borders, and applies viewport offsets. Children never draw outside their parent,
+so a node with nothing visible ends the walk: content scrolled out of view is
+not painted, and its recorded bounds are cleared so it cannot take a click.
+Scroll extents and offsets are 32-bit, so content may be far taller than a
+frame. Layout still visits every node, which is why a long text document belongs
+in a `Feed`: one leaf that lays out only the blocks in view. Paint order follows child order, and
+pointer hit testing descends the painted bounds in reverse order, skipping any
+subtree that misses the cell.
 
 `Element` defines measurement, paint, input, focus eligibility, and viewport
-behavior. `Canvas` clips drawing and filters terminal control characters.
-Applications can implement elements without registering them globally. `Text`
-shares measurement and wrapping logic. `Editor` stores grapheme-aligned byte
+behavior. `Canvas` clips drawing, expands tabs, and filters other terminal
+control characters. Applications can implement elements without registering
+them globally. `Text` and `RichText` share measurement and wrapping logic and
+keep their wrapped layout between frames. Their fields are public, so there is
+no moment of change to hook; the layout is reused when its inputs equal the text
+it already holds, which is exact and costs a memory comparison. ASCII text, the
+common case, skips Unicode segmentation and is painted a byte per cell with its
+style resolved once per run.
+
+A stored cell is 28 bytes, flat and `Copy`: the grapheme inline, colors packed
+into integers, attribute bits, and a width. Clearing, comparing, and copying a
+frame are therefore plain memory operations. The two things that need a pointer,
+a grapheme longer than fifteen bytes and a hyperlink target, are indices into
+tables on the buffer, and `Cell` is a view that resolves them. A
+`Color::Default` background resolves to the color already in the cell when it is
+written, which is how text inherits a parent's fill; cells never hold
+`Color::Reset`.
+
+A tree stamps each frame it paints with a number no other frame has, and any
+direct write clears it. A renderer that is handed a number it already drew
+returns without comparing a cell, so drawing every loop iteration is free while
+nothing changes. A repaint that did not change layout, a focus change for
+example, reuses the computed layout.
+
+Mouse events are delivered with positions relative to the receiving node's
+top-left cell as last painted, translated again for each node they bubble to.
+The node that handles a press captures the pointer until release. A press that
+no node handles anchors a selection of the painted frame: it is kept as two
+cells, shown by inverting them after the paint pass, and read back from the
+frame's own cells, so it works across every element, custom ones included, and
+covers exactly what is on screen. Siblings paint in ascending `z` and are hit in
+reverse; a parent sorts its children only once one of them has a `z`.
+
+Layout and paint are invalidated separately. A change that can move a node
+clears the record of the last layout pass; focus, selection, and `z` only
+repaint. `Tree::height` answers from that record, so an idle inline loop that
+asks every iteration neither lays out nor repaints, and the frame that follows a
+change reuses the pass `height` ran. `Editor` stores grapheme-aligned byte
 positions and up to 100 edit records. Each record stores inserted and removed text plus cursor
 and selection endpoints. Text storage remains a String.
 
 State changes invalidate layout and paint. An idle frame does neither. A changed
-frame reuses its cell buffer when dimensions match and repaints it; the terminal renderer
-then emits only changed cells. This is not incremental subtree painting.
+frame reuses its cell buffer when dimensions match and repaints it; the renderer
+then emits only changed cells, as one synchronized update, reusing its shadow
+frame and output storage. This is not incremental subtree painting.
 
-The optional crossterm backend owns raw mode, alternate screen, mouse input,
-bracketed paste, and cursor restoration. Portable events keep backend types out
-of element contracts. Terminal restoration runs on ordinary return and panic
-unwinding, not on process abort or uncatchable signals.
+`render` also holds everything that turns frames and input into plain bytes, with
+no terminal and no backend dependency: `Renderer` for full-screen output, `Inline`
+for output that grows down the main screen, `Options` for the modes a session
+enables and disables, and `Depth` for mapping colors to what a terminal accepts.
+`input::Decoder` turns input bytes into events and never fails: a peer can send
+anything, so malformed input is dropped and an oversized paste is delivered in
+pieces. Every source builds keys through `Event::key`, which is what makes a
+binding match the same way locally and over SSH. After a cluster whose width
+terminals disagree on, anything but ASCII, both renderers state the next cell's
+column outright, so a disagreement costs one cell instead of the rest of the row. Transports such as SSH are built
+from these.
+
+`Inline` maps a frame of any height onto the screen from the launch row. Rows
+that scroll off the top belong to the terminal and are never rewritten, so only
+the reachable suffix of a frame is compared, row by row. Growth that fits is
+scrolled in and diffed; growth whose first changed row would itself scroll away
+is printed in order from that row, so history receives final content. `commit`
+releases rows at the top of the frame, which is what keeps a long session's
+frames small. A resize clears the visible screen, never the scrollback.
+
+The optional crossterm backend owns raw mode and reads local input; the modes
+themselves are written through `Options`. `Terminal` draws full-screen or inline,
+and can switch between them while running.
+
+A session probes the terminal once, before the application reads input: the
+kitty keyboard query, the background color, the cursor position, and last a
+device-attributes request, which every terminal answers and which therefore ends
+the wait without a timeout. Replies are picked out of what arrives, read with
+safe polling from rustix on Unix, and the rest is decoded as typed-ahead keys.
+The modes to undo live in one place that the session, the panic hook, and the
+signal thread each try to take, so the terminal is restored exactly once however
+the process ends; only an abort or an uncatchable signal leaves them behind.
+Each frame goes out in a single write, so a restore from another thread cannot
+land inside one. The main and alternate screens keep separate stacks of keyboard
+modes, so `switch` pops on the screen it leaves and pushes on the one it enters. The
+library binds no keys of its own: `terminal::run` ends when its callback says
+so. Portable events keep backend types out of element contracts.
 
 ## Dioxus
 

@@ -22,8 +22,10 @@ own styled text do not need the parsing dependencies.
 a reusable Syntect syntax set and application-selected theme. `wove::diff::render` accepts
 separate base, addition, and deletion styles. Cargo includes each parsing dependency only when its feature is enabled.
 
-Markdown is currently linear text layout. HTML remains literal text, and links
-show their destinations. Markdown tables and clickable links are not implemented.
+Markdown is currently linear text layout. HTML remains literal text. Link text
+opens its destination in terminals with hyperlinks, and the destination is also
+shown. Markdown tables are not implemented. Highlighted spans carry no
+background; fill the container with the theme's background to show it.
 
 ## Keymaps
 

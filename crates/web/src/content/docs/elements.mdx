@@ -9,13 +9,36 @@ An element supplies measurement, drawing, and input behavior. The tree owns its 
 ## Built-in elements
 
 - `Container` groups children.
-- `Panel` draws a border around its content.
+- `Panel` draws a border around its content, in a `Border` style, with an optional
+  title. A background color in its style fills it, which makes it opaque over
+  whatever it overlaps.
 - `Text` draws a string.
 - `RichText` draws styled spans with optional word wrapping.
-- `Input` edits a single line.
-- `Textarea` edits multiple logical lines.
+- `Input` edits a single line. `mask` hides a secret, `limit` caps its length,
+  and `cursor` chooses the cursor's shape.
+- `Textarea` edits multiple lines and can soft-wrap them.
 - `Select` handles a list of choices.
-- `Scroll` clips its children to a viewport.
+- `List` and `Table` draw only their visible rows. `List` rows are styled spans.
+  Their view moves only when the selection leaves it, so a click never slides
+  the rows under the pointer.
+- `Scroll` clips its children to a viewport and paints only those in view.
+  `Scroll::with_bar` adds a scrollbar in a column of its own.
+- `Feed` shows a long document of styled text blocks, such as a log or a
+  conversation.
+
+## Long documents
+
+A `Scroll` holds elements, and layout visits every one of them, so a frame costs
+more as the content grows. A `Feed` holds text blocks instead and lays out only
+the blocks in view: a frame costs what is visible, however many blocks there are,
+and replacing the last block with `Feed::set` relays out only that block. In the
+local timing example, a streaming frame over 10,000 wrapped blocks takes about
+0.03 ms in a `Feed` and about 4 ms in a `Scroll`.
+
+A feed follows its tail until the user scrolls away, and holds its place while
+blocks arrive beneath. Its position is a block and a row within it, not a row
+count, because the rows above the view are never measured. Use a `Scroll` when the
+content is elements rather than text.
 
 ## Editing
 
@@ -25,9 +48,16 @@ on grapheme boundaries.
 - Shift extends a selection; Ctrl+Z undoes an edit.
 - The multiline editor accepts pasted newlines.
 - Moving vertically through short lines preserves the display column.
+- With `Textarea::wrap`, Up and Down move through the wrapped rows.
+- A click places the cursor, Shift-click and dragging select, and a click in a
+  `List` or `Table` selects the row under it.
 
-Undo keeps at most 100 edits and stores changed text rather than a copy of the entire document. Text storage is currently a `String`; large-document editing still needs profiling.
+Edits are data. A `Command` inserts text, moves by a `Motion`, deletes up to a `Motion`, selects all, undoes, or redoes; `Editor::apply` runs one. `text::command` maps an event to a command under the default bindings: arrows, Home and End, Ctrl or Alt with arrows for words, Ctrl+W and Alt+Backspace to delete a word, Ctrl+K and Ctrl+U to delete to the end or start of the line. Applications with their own bindings handle the key first, in their loop or a node handler, and apply the commands they choose.
+
+An atom is a run of text that acts as one unit, for tokens that stand for something else, such as a collapsed paste. `Editor::insert_atom` adds one with an application-chosen id. The cursor steps over it, an edit that touches it removes it whole, and undo brings it back. `Textarea::atom` styles atoms.
+
+Undo keeps at most 100 edits and stores changed text rather than a copy of the entire document. A typed word and the whitespace after it are one edit. Text storage is currently a `String`; large-document editing still needs profiling.
 
 ## Custom elements
 
-Implement `wove::Element` and add your type to a tree. Drawing goes through `Canvas`, which clips output to the assigned area and removes terminal control characters. No global registration is required.
+Implement `wove::Element` and add your type to a tree. Drawing goes through `Canvas`, which clips output to the assigned area, expands tabs, and removes other terminal control characters. An element with nothing visible is not painted, and `Canvas::visible_rows` tells a tall element which of its rows to draw. Mouse events arrive with positions relative to the element's top-left cell, so an element can act on a click without knowing where it was laid out or scrolled to. `Element::overlay` draws over the element's children, which is how `Scroll` draws its bar. No global registration is required.

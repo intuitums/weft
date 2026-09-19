@@ -19,13 +19,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tree.add(tree.root(), Text::new("Hello from Wove. What's your name?"))?;
     let input = tree.add(tree.root(), Input::default())?;
     tree.focus(Some(input))?;
-    terminal::run(&mut tree, |_, _, _| true)?;
+    terminal::run(&mut tree, |_, event, _| *event != wove::Key::Escape.into())?;
     Ok(())
 }
 ```
 
 Run your app and start typing. Shift + arrows selects text, Ctrl + Z undoes an
-edit, and Escape exits.
+edit, and Escape exits because the callback says so; the library binds no quit key.
 
 Disable default features for headless use. `Tree::frame` returns a cell buffer
 without acquiring a terminal. Custom elements implement `Element` and paint through
@@ -34,8 +34,20 @@ subtree and callbacks.
 
 This is an early release with an unstable API. Current elements are `Container`,
 `Panel`, `Text`, `RichText`, `Input`, `Textarea`, `Select`, `List`, `Table`, and
-`Scroll`. `List` requests only visible rows from its provider. `Textarea` supports
-logical lines and horizontal scrolling; soft-wrapped editing is not implemented.
+`Scroll`, plus `Feed` for long text documents. `List` requests only visible rows
+from its provider, `Scroll` paints only the children in view, and `Feed` lays out
+only the blocks in view. `Textarea` scrolls long lines or, with `wrap`, breaks
+them at words.
+
+The tree selects text on the painted screen by dragging, orders overlays with
+`set_z`, and reports the pointer entering and leaving nodes. A `Terminal` restores
+itself on panic and on fatal signals, copies to the clipboard through the
+terminal, and probes once at startup for what the terminal supports.
+
+A `Terminal` draws on the alternate screen, over the main screen, or inline:
+frames that grow downward from the shell prompt while finished rows stay in the
+terminal's own scrollback. `Renderer`, `Inline`, and `input::Decoder` do the same
+work on plain bytes, without a terminal, for transports such as SSH.
 
 [Source and examples](https://github.com/intuitums/wove/tree/main) ·
 [Guide](https://github.com/intuitums/wove/blob/main/crates/web/src/content/docs/start.mdx)

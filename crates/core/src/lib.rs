@@ -21,8 +21,11 @@ pub mod testing;
 pub mod text;
 mod tree;
 
-pub use input::{Event, Key, Modifiers, Mouse, MouseKind, Response};
-pub use render::{Buffer, Canvas, Cell, Color, Rect, Style};
+pub use input::{Button, Event, Key, Modifiers, Mouse, MouseKind, Response};
+pub use render::{
+    Border, Buffer, Canvas, Cell, Color, CursorShape, Depth, Inline, Options, Rect, Renderer,
+    ScreenMode, Style,
+};
 pub use taffy::Style as Layout;
 pub use tree::{Dispatch, Error, Id, Tree};
 /// Taffy's layout types and helpers, measured in terminal cells.

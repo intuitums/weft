@@ -54,6 +54,9 @@ impl View {
             Event::Mouse(..) => "mouse",
             Event::Focus => "focus",
             Event::Blur => "blur",
+            Event::Enter => "enter",
+            Event::Leave => "leave",
+            Event::WindowFocus(..) => "window",
             Event::Resize(..) => "resize",
         };
         if !self.emit(target, name, Rc::new(event.clone())) {

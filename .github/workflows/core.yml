@@ -51,7 +51,7 @@ jobs:
         if: needs.changes.outputs.code == 'true'
       - name: Terminal integration
         if: runner.os != 'Windows' && needs.changes.outputs.ui == 'true'
-        run: ./x ui gallery editor
+        run: ./x ui gallery editor inline
   complete:
     name: Core - Build and Test
     needs: [changes, test]

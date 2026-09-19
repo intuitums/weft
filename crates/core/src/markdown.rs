@@ -14,8 +14,9 @@ pub struct Palette {
     pub link: Style,
 }
 
-/// Render CommonMark as styled text. HTML remains literal text; links display
-/// their destination. Block layout is linear and does not implement HTML layout.
+/// Render CommonMark as styled text. HTML remains literal text. Link text opens
+/// its destination in terminals with hyperlinks, and the destination is shown
+/// for the rest. Block layout is linear and does not implement HTML layout.
 pub fn render(source: &str, palette: Palette) -> RichText {
     let mut spans = Vec::new();
     let mut styles = vec![palette.text];
@@ -72,7 +73,10 @@ pub fn render(source: &str, palette: Palette) -> RichText {
                 }
             }
             Event::Text(text) | Event::Html(text) | Event::InlineHtml(text) => {
-                spans.push(Span::new(text.into_string(), current))
+                spans.push(match links.last() {
+                    Some(url) => Span::link(text.into_string(), current, url.as_str()),
+                    None => Span::new(text.into_string(), current),
+                })
             }
             Event::Code(text) => spans.push(Span::new(text.into_string(), palette.code)),
             Event::SoftBreak => spans.push(Span::new(" ", current)),
@@ -81,8 +85,5 @@ pub fn render(source: &str, palette: Palette) -> RichText {
             _ => {}
         }
     }
-    RichText {
-        spans,
-        wrap: Wrap::Word,
-    }
+    RichText::new(spans, Wrap::Word)
 }

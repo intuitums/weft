@@ -1,12 +1,12 @@
 //! Run a remote application without acquiring the server terminal.
-use crate::{input::Decoder, server::Factory, Error, Peer};
+use crate::{server::Factory, Error, Peer};
 use russh::{server, ChannelId};
 use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     time::Duration,
 };
 use tokio::sync::mpsc;
-use wove::{Event, Key};
+use wove::{input::Decoder, Depth, Event, Key, Options, Renderer};
 
 pub(crate) enum Message {
     Data(Vec<u8>),
@@ -33,12 +33,19 @@ pub(crate) fn run(
             Ok(())
         })
     };
+    // The same modes a local terminal session enables, carried over the channel.
+    let modes = Options::default();
     let result = catch_unwind(AssertUnwindSafe(|| -> Result<(), Error> {
         let mut app = factory(&peer)?;
         let (mut width, mut height) = (peer.width, peer.height);
-        let mut renderer = wove::terminal::Renderer::default();
+        // The peer's terminal type is all that is known of its colors.
+        let term = peer.term.clone();
+        let depth = Depth::from_env(|name| (name == "TERM").then(|| term.clone()));
+        let mut renderer = Renderer::with_depth(depth);
         let mut decoder = Decoder::default();
-        send(b"\x1b[?1049h\x1b[?25l\x1b[?2004h\x1b[?1000h\x1b[?1006h".to_vec())?;
+        let mut bytes = Vec::new();
+        modes.enter(&mut bytes)?;
+        send(bytes)?;
         loop {
             let mut bytes = Vec::new();
             renderer.draw(&mut bytes, app.frame(width, height)?)?;
@@ -53,7 +60,7 @@ pub(crate) fn run(
                 }
             });
             let events = match message {
-                Ok(Some(Message::Data(bytes))) => decoder.push(&bytes)?,
+                Ok(Some(Message::Data(bytes))) => decoder.push(&bytes),
                 Ok(Some(Message::Resize(w, h))) => {
                     width = w;
                     height = h;
@@ -75,7 +82,9 @@ pub(crate) fn run(
         Ok(())
     }))
     .unwrap_or_else(|_| Err("SSH application panicked".into()));
-    let _ = send(b"\x1b[0m\x1b[?1006l\x1b[?1000l\x1b[?2004l\x1b[?25h\x1b[?1049l".to_vec());
+    let mut bytes = Vec::new();
+    let _ = modes.leave(&mut bytes);
+    let _ = send(bytes);
     let _ = runtime.block_on(async {
         tokio::time::timeout(Duration::from_secs(5), async {
             let _ = handle

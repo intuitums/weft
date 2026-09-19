@@ -25,6 +25,26 @@ impl Screen {
         self.frame()?;
         self.tree.dispatch(event.into())
     }
+    /// Press and release the left button on a cell.
+    pub fn click(&mut self, x: u16, y: u16) -> Result<Dispatch, Error> {
+        use crate::{Button, Mouse, MouseKind};
+        let press = self.send(Event::Mouse(Mouse::new(
+            x,
+            y,
+            MouseKind::Down(Button::Left),
+        )))?;
+        self.send(Event::Mouse(Mouse::new(x, y, MouseKind::Up(Button::Left))))?;
+        Ok(press)
+    }
+    /// Press on one cell, drag to another, and release there.
+    pub fn drag(&mut self, from: (u16, u16), to: (u16, u16)) -> Result<Dispatch, Error> {
+        use crate::{Button, Mouse, MouseKind};
+        let at = |(x, y), kind| Event::Mouse(Mouse::new(x, y, kind));
+        self.send(at(from, MouseKind::Down(Button::Left)))?;
+        let dragged = self.send(at(to, MouseKind::Drag(Button::Left)))?;
+        self.send(at(to, MouseKind::Up(Button::Left)))?;
+        Ok(dragged)
+    }
 }
 
 /// A clock advanced explicitly by tests, with no sleeping or wall-clock reads.

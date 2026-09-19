@@ -13,7 +13,7 @@ categories = ["command-line-interface"]
 
 [features]
 default = ["terminal"]
-terminal = ["dep:crossterm"]
+terminal = ["dep:crossterm", "dep:rustix", "dep:signal-hook"]
 markdown = ["dep:pulldown-cmark"]
 syntax = ["dep:syntect"]
 diff = ["dep:similar"]
@@ -27,9 +27,20 @@ unicode-width = "0.2"
 taffy = { version = "0.14", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "content_size"] }
 crossterm = { version = "0.29", optional = true, features = ["event-stream"] }
 
+# Safe polling for terminal queries; crossterm already brings this crate in.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", optional = true, default-features = false, features = ["std", "event", "stdio"] }
+# Restores the terminal before a fatal signal; crossterm already brings this crate in.
+signal-hook = { version = "0.3", optional = true }
+
 [[example]]
 name = "gallery"
 path = "examples/gallery.rs"
+required-features = ["terminal"]
+
+[[example]]
+name = "inline"
+path = "examples/inline.rs"
 required-features = ["terminal"]
 
 [[example]]

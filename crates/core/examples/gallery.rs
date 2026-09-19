@@ -72,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Text::new("Tab focus · arrows select / scroll · Esc quit"),
     )?;
     tree.focus(Some(input))?;
-    terminal::run(&mut tree, |tree, _, _| {
+    terminal::run(&mut tree, |tree, event, _| {
         let filter = tree
             .get::<Input>(input)
             .expect("input exists")
@@ -105,7 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .expect("scroll exists");
         }
-        true
+        *event != wove::Key::Escape.into()
     })?;
     Ok(())
 }

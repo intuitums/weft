@@ -1,4 +1,4 @@
-//! Multiline editing with logical line navigation and a cursor-following viewport.
+//! Multiline editing with a cursor-following viewport and optional soft wrapping.
 use crate::{
     text::{clean, edit, Editor},
     Canvas, Element, Event, Response, Style,
@@ -6,12 +6,18 @@ use crate::{
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-/// An unwrapped multiline editor. The viewport follows the cursor in both axes.
+/// A multiline editor. The viewport follows the cursor. With `wrap`, lines
+/// break at words to fit the width and `Up` and `Down` move through the
+/// wrapped rows; without it, long lines scroll horizontally.
 #[derive(Default)]
 pub struct Textarea {
     pub editor: Editor,
     pub style: Style,
+    /// Drawn over `style` for atoms, the editor's indivisible tokens.
+    pub atom: Style,
     pub placeholder: String,
+    pub wrap: bool,
+    pub cursor: crate::CursorShape,
 }
 impl Textarea {
     pub fn new(value: &str) -> Self {
@@ -20,23 +26,24 @@ impl Textarea {
             ..Self::default()
         }
     }
+    fn width(&self, width: u16) -> Option<u16> {
+        self.wrap.then_some(width.max(1))
+    }
 }
 impl Element for Textarea {
     fn focusable(&self) -> bool {
         true
     }
-    fn measure(&self, _: Option<u16>) -> (u16, u16) {
-        let lines: Vec<_> = self.editor.text().split('\n').collect();
+    fn measure(&self, width: Option<u16>) -> (u16, u16) {
+        let (widest, rows) = self.editor.extent_at(width.and_then(|w| self.width(w)));
         (
-            lines
-                .iter()
-                .map(|line| line.width())
-                .max()
-                .unwrap_or(0)
-                .max(1)
-                .min(u16::MAX as usize) as u16,
-            lines.len().min(u16::MAX as usize) as u16,
+            widest.clamp(1, usize::from(width.unwrap_or(u16::MAX)).max(1)) as u16,
+            rows.min(u16::MAX as usize) as u16,
         )
+    }
+    fn viewport(&mut self, size: (u16, u16), _: (u32, u32)) -> (u32, u32) {
+        self.editor.width = self.width(size.0);
+        (0, 0)
     }
     fn paint(&self, canvas: &mut Canvas<'_>) {
         let (width, height) = canvas.size();
@@ -48,41 +55,47 @@ impl Element for Textarea {
             canvas.text(0, 0, &self.placeholder, self.style);
             return;
         }
-        let prefix = &value[..self.editor.cursor()];
-        let row = prefix.bytes().filter(|b| *b == b'\n').count();
-        let col = prefix.rsplit('\n').next().unwrap_or("").width();
+        let rows = self.editor.rows_at(self.width(width));
+        let cursor = self.editor.cursor();
+        let row = Editor::row_of(&rows, cursor);
+        let col = value[rows[row].start..cursor].width();
         let top = row.saturating_sub(usize::from(height) - 1);
-        let left = col.saturating_sub(usize::from(width) - 1);
+        let left = if self.wrap {
+            0
+        } else {
+            col.saturating_sub(usize::from(width) - 1)
+        };
+        self.editor.set_view(top, left);
         let selection = self.editor.selection();
-        let mut offset = 0;
-        for (y, line) in value.split('\n').enumerate() {
-            if y >= top && y < top + usize::from(height) {
-                let mut x = 0;
-                for (i, g) in line.grapheme_indices(true) {
-                    let style = Style {
-                        reverse: self.style.reverse
-                            || (canvas.focused() && selection.contains(&(offset + i))),
-                        ..self.style
-                    };
-                    canvas.text(x as i32 - left as i32, (y - top) as i32, g, style);
-                    x += g.width();
-                }
-                if canvas.focused() && selection.contains(&(offset + line.len())) {
-                    canvas.text(
-                        x as i32 - left as i32,
-                        (y - top) as i32,
-                        " ",
-                        Style {
-                            reverse: true,
-                            ..self.style
-                        },
-                    );
-                }
+        let focused = canvas.focused();
+        let selected = |at: usize| focused && selection.contains(&at);
+        for (y, range) in rows.iter().enumerate().skip(top).take(usize::from(height)) {
+            let mut x = 0;
+            for (i, g) in value[range.clone()].grapheme_indices(true) {
+                let at = range.start + i;
+                let atom = self.editor.atoms().iter().any(|a| a.range.contains(&at));
+                let base = if atom { self.atom } else { self.style };
+                let style = Style {
+                    reverse: base.reverse || selected(at),
+                    ..base
+                };
+                canvas.text(x as i32 - left as i32, (y - top) as i32, g, style);
+                x += g.width();
             }
-            offset += line.len() + 1;
+            // A selected line break shows as one reversed cell.
+            if value[range.end..].starts_with('\n') && selected(range.end) {
+                let style = Style {
+                    reverse: true,
+                    ..self.style
+                };
+                canvas.text(x as i32 - left as i32, (y - top) as i32, " ", style);
+            }
         }
         if canvas.focused() {
-            canvas.cursor((col - left) as i32, (row - top) as i32);
+            // Whitespace hung past a wrap seam leaves the cursor on the last cell.
+            let x = (col - left).min(usize::from(width) - 1);
+            canvas.cursor(x as i32, (row - top) as i32);
+            canvas.cursor_shape(self.cursor);
         }
     }
     fn event(&mut self, event: &Event) -> Response {

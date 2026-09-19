@@ -8,7 +8,7 @@ repository.workspace = true
 description = "Serve Wove applications over SSH"
 
 [dependencies]
-wove = { path = "../core", version = "=0.0.1" }
+wove = { path = "../core", version = "=0.0.1", default-features = false }
 russh = { version = "0.63.3", default-features = false, features = ["ring"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal"] }
 

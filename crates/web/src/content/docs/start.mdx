@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tree.add(tree.root(), Text::new("Your name"))?;
     let input = tree.add(tree.root(), Input::default())?;
     tree.focus(Some(input))?;
-    terminal::run(&mut tree, |_, _, _| true)?;
+    terminal::run(&mut tree, |_, event, _| *event != wove::Key::Escape.into())?;
     Ok(())
 }
 ```
@@ -39,6 +39,13 @@ using the types in `wove::layout` for flex, grid, spacing, and alignment.
 Lengths are terminal cells. `Panel` reserves its border in its default layout;
 when replacing a layout, start from `tree.layout(id)?.clone()` to retain defaults.
 Text defaults to clipping. Set `Text::wrap` for hard wrapping at grapheme boundaries.
+Tabs expand to stops every four columns.
+
+A `Style` sets colors, bold, dim, italic, underline, strikethrough, and reverse.
+A `Color::Default` background keeps whatever is painted beneath, so text over a
+filled parent does not punch a hole in it; `Color::Reset` forces the terminal
+default. `Span::link` and `Canvas::link` make text open a URL in terminals with
+hyperlinks.
 
 ## Input and rendering
 
@@ -48,19 +55,100 @@ when no handler consumes the key. Mouse presses focus the nearest focusable
 ancestor of the hit element. Hit testing uses the last painted frame.
 
 `Input` supports arrows, Shift selection, Home, End, Backspace, Delete, Ctrl-A,
-Ctrl-Z, Ctrl-Y, and bracketed paste. Programmatic changes through its public
-editor should contain single-line text. `Editor` itself accepts arbitrary text;
-it is also available to custom elements.
+Ctrl-Z, Ctrl-Y, word movement and deletion, and bracketed paste. Programmatic
+changes through its public editor should contain single-line text. `Editor`
+itself accepts arbitrary text; it is also available to custom elements.
+
+Mouse events carry their button and modifiers, and distinguish a drag from
+plain motion. Handlers and elements see positions relative to their own
+top-left cell. The node that handles a press keeps the pointer: it receives the
+drag and the release wherever the pointer goes. `Event::Enter` and
+`Event::Leave` report the pointer crossing a node, once `Options::motion` is on.
+
+Key events have one form whatever produced them. A character already reflects
+Shift, so `Key::Char` never carries it: Shift+g is `Char('G')` on a local
+terminal, over SSH, and with kitty key reports alike. Build events with
+`Event::key` to get that form. `Event::WindowFocus` reports the terminal window,
+and is separate from a node's `Focus` and `Blur`.
+
+## Selection and the clipboard
+
+Capturing the mouse takes the terminal's own text selection away, so the tree
+gives one back. A press that no node handles, dragged, selects the painted screen
+in reading order, across any elements. `Tree::selected_text` returns it with one
+line per row, and `Terminal::copy` puts text on the system clipboard through the
+terminal, which works over SSH and inside tmux. When to copy, on release or on a
+key, is the application's choice. `Tree::set_selectable(false)` turns selection
+off.
+
+## Overlays
+
+Give a node `position: absolute` in its layout and raise it with `Tree::set_z`.
+Children paint in ascending `z` and the pointer hits them in reverse. A `Panel`
+with a background color is opaque, which is what a menu or a dialog wants. Modifiers include `meta` for Super or Command, which terminals
+report only when `Options::keyboard` is on.
 
 `Scroll` clips children and handles arrows, paging, Home, End, and mouse wheels.
 Children that should retain their full content height need `flex_shrink: 0.0`.
-End enables following; moving away from the end stops it.
+End enables following; moving away from the end stops it. Children outside the
+viewport are not painted, and content may be taller than 65,535 rows.
 
 `frame` recomputes after updates or resize and otherwise returns the cached frame.
-`terminal::Renderer` writes changed cells and cursor position. `terminal::run`
-is a blocking convenience loop with Escape and Ctrl-C exit behavior. Applications
-with timers or background work can use `Terminal`, `read`, and `poll` in their
-own loop. Do not print over a live session without invalidating its renderer.
+`Renderer` writes changed cells and the cursor position as one synchronized
+update, and maps colors to the `Depth` the terminal accepts. `terminal::run` is a
+blocking convenience loop that ends when its callback returns false; the library
+binds no quit key. Applications with timers or background work can use
+`Terminal`, `read`, and `poll` in their own loop. Do not print over a live
+session without invalidating its renderer.
+
+`Terminal::with_options` chooses the screen and which input modes to enable:
+mouse reporting, pointer motion, bracketed paste, focus reports, and unambiguous
+key reports. Motion is off by default, because a moving pointer sends hundreds of
+reports a second. Turn `mouse` off to leave text selection to the terminal.
+
+A session asks the terminal once, as it starts, what it supports and where its
+cursor is. `Terminal::capabilities` holds the answers: whether kitty key reports
+work, in which case `Options::keyboard` takes effect, and the background color,
+for choosing a light or dark palette. Keys typed during the probe come back from
+`Terminal::typed_ahead`; handle them before reading input.
+
+A panic restores the terminal before its message prints, so the message is
+readable. So does a fatal signal such as hangup or terminate, and an inline session
+parks the cursor beneath its frame first, so what prints next lands under it.
+Set `Options::signals` to false when the application handles signals itself.
+`Terminal::stop` suspends the process as Ctrl-Z does in a shell, which raw mode
+otherwise turns into an ordinary key. On Windows, call `Terminal::reassert` when
+`Event::WindowFocus(true)` arrives: the console drops input modes while
+unfocused. A `Terminal` is `Send`, so an application can draw from its own
+thread and keep a slow terminal from stalling input.
+
+## Inline sessions
+
+`ScreenMode::Inline` draws on the main screen, starting at the shell's cursor.
+A frame may be of any height: ask `Tree::height` for the content's natural
+height, then pass it to `frame`. When a frame outgrows the screen its head
+scrolls into the terminal's own scrollback and is never rewritten.
+
+```rust
+let (width, _) = terminal.size()?;
+let height = tree.height(width)?;
+terminal.draw(tree.frame(width, height)?)?;
+```
+
+An inline frame starts wherever the session began and moves as it scrolls, so a
+mouse report's row is not the frame's row. Pass events through
+`Terminal::to_frame` before dispatching them; it returns `None` for a report
+outside the frame. The `inline` example leaves the mouse off instead, which keeps
+the terminal's own selection and scrollback gestures.
+
+`Terminal::commit(rows)` releases finished rows at the top of the last frame.
+They stay where they are, and the next frame starts beneath them, so remove
+their elements from the tree. This keeps frames small however long a session
+runs. After a resize the visible screen is cleared and the current frame is
+repainted; committed rows that were still visible are gone unless the
+application draws and commits them again. `Terminal::switch` moves between an
+inline session and a full-screen view while running. The `inline` example shows
+the whole loop.
 
 ## Test without a terminal
 
@@ -80,6 +168,6 @@ terminal session. Real PTY checks run through `./x ui` on Unix.
 
 ## Multiline and styled text
 
-`Textarea` edits logical lines with vertical cursor movement and a scrolling
-viewport. `RichText` uses styled `Span` values and `Wrap::Word` for word wrapping.
+`Textarea` edits multiple lines with vertical cursor movement and a scrolling
+viewport; `wrap` breaks long lines at words. `RichText` uses styled `Span` values and `Wrap::Word` for word wrapping.
 See [elements and text](/docs/elements/) for details.

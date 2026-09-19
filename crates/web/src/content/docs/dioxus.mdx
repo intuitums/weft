@@ -70,6 +70,7 @@ See the [adapter tests](https://github.com/intuitums/wove/blob/main/crates/dioxu
 
 ## Run an application
 
-`wove_dioxus::run(&mut view).await` drives terminal input and component work.
+`wove_dioxus::run(&mut view, quit).await` drives terminal input and component
+work until `quit` accepts an event; the library binds no quit key.
 It repaints when a signal or task wakes, even without keyboard input. Use your
 executor of choice; the counter example uses `futures_lite::future::block_on`.

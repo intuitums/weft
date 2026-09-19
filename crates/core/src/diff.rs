@@ -27,8 +27,5 @@ pub fn render(before: &str, after: &str, base: Style, added: Style, removed: Sty
             )
         })
         .collect();
-    RichText {
-        spans,
-        wrap: Wrap::None,
-    }
+    RichText::new(spans, Wrap::None)
 }

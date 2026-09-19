@@ -20,6 +20,8 @@ impl Highlighter {
         Self { syntaxes, theme }
     }
     /// Highlight by syntax token or file extension. Unknown languages stay plain.
+    /// Spans carry no background, so the text sits on whatever is beneath it;
+    /// fill the container with the theme's background to show it.
     pub fn highlight(&self, source: &str, language: &str) -> Result<RichText, syntect::Error> {
         let syntax = self
             .syntaxes
@@ -33,7 +35,6 @@ impl Highlighter {
                     text,
                     Style {
                         fg: Color::Rgb(style.foreground.r, style.foreground.g, style.foreground.b),
-                        bg: Color::Rgb(style.background.r, style.background.g, style.background.b),
                         bold: style.font_style.contains(FontStyle::BOLD),
                         italic: style.font_style.contains(FontStyle::ITALIC),
                         underline: style.font_style.contains(FontStyle::UNDERLINE),
@@ -42,10 +43,7 @@ impl Highlighter {
                 ));
             }
         }
-        Ok(RichText {
-            spans,
-            wrap: Wrap::None,
-        })
+        Ok(RichText::new(spans, Wrap::None))
     }
 }
 pub use syntect::{highlighting::ThemeSet, parsing::SyntaxSet as Syntaxes};

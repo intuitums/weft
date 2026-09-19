@@ -10,6 +10,8 @@ fn markdown_keeps_nested_style_and_link_destination() {
     assert!(nested.style.bold && nested.style.italic);
     let end = rich.spans.iter().find(|s| s.text == " end").unwrap();
     assert!(end.style.bold && !end.style.italic);
+    let label = rich.spans.iter().find(|s| s.text == "label").unwrap();
+    assert_eq!(label.link.as_deref(), Some("https://example.com"));
     assert!(rich
         .spans
         .iter()

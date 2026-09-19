@@ -34,6 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
             ],
             wrap: Wrap::Word,
+            ..Default::default()
         },
     )?;
     let area = tree.add(
@@ -53,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let status = tree.add(root, Text::new("Ready"))?;
     tree.focus(Some(area))?;
-    terminal::run(&mut tree, move |tree, _, _| {
+    terminal::run(&mut tree, move |tree, event, _| {
         let count = tree
             .get::<Textarea>(area)
             .expect("editor exists")
@@ -62,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .len();
         tree.update::<Text>(status, |text| text.content = format!("{count} bytes"))
             .expect("status exists");
-        true
+        *event != wove::Key::Escape.into()
     })?;
     Ok(())
 }
